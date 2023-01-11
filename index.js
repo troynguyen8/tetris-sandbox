@@ -52,6 +52,23 @@ let selectedColor;
 let mouseIsDown = false;
 document.onmousedown = () => { mouseIsDown = true; };
 document.onmouseup = () => { mouseIsDown = false; };
+document.onkeydown = (ev) => {
+    const isZKey = ev.key === "z" || ev.key === "KeyZ";
+    const isYKey = ev.key === "y" || ev.key === "KeyY";
+
+    const isUndo = (isZKey && ev.metaKey && !ev.shiftKey) ||
+        (isZKey && ev.ctrlKey && !ev.shiftKey);
+    if (isUndo) {
+        history.back();
+    }
+
+    const isRedo = (isZKey && ev.metaKey && ev.shiftKey) ||
+        (isZKey && ev.ctrlKey && ev.shiftKey) ||
+        (isYKey && ev.metaKey);
+    if (isRedo) {
+        history.forward();
+    }
+};
 
 const updateHash = () => {
     location.hash = encodeURIComponent(
