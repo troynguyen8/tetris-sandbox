@@ -1,7 +1,7 @@
 /**
  * An "enum" that maps a color key to a CSS-compatible color
  */
- const PIECE_COLORS = {
+const PIECE_COLORS = {
     TEAL: 'cyan',
     PURPLE: 'purple',
     RED: 'red',
@@ -20,41 +20,61 @@ const createGridRow = () => {
     return row;
 };
 
-/**
- * The in-memory representation of the tetris grid
- * @type {Array} contains 20 subarrays, each of length 10. element 0 is the top row
- */
-let grid = new Array(20);
-for (let i = 0; i < grid.length; i++) {
-    grid[i] = createGridRow();
-}
+const getDefaultGrid = () => {
+    const defaultGrid = new Array(20);
+    for (let i = 0; i < defaultGrid.length; i++) {
+        defaultGrid[i] = createGridRow();
+    }
 
-const pcoTemplate = JSON.parse('[["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["red","red","black","black","black","black","orange","orange","orange","cyan"],["purple","red","red","black","black","black","orange","gold","gold","cyan"],["purple","purple","green","green","black","black","blue","gold","gold","cyan"],["purple","green","green","black","black","black","blue","blue","blue","cyan"]]');
-grid = pcoTemplate;
+    return defaultGrid;
+};
+
+const decodeHash = () => {
+    if (location.hash) {
+        return JSON.parse(decodeURIComponent(location.hash.substring(1)));
+    }
+    return undefined;
+};
+
+// /**
+//  * The in-memory representation of the tetris grid
+//  * @type {Array} contains 20 subarrays, each of length 10. element 0 is the top row
+//  */
+let grid;
 
 const gridContainer = document.querySelector('#table-container');
 const colorSelectorContainer = document.querySelector('#color-selector-container');
 const lineClearToggleContainer = document.querySelector('#line-clear-toggle-container');
 const optionsContainer = document.querySelector('#options-container');
 const lineClearToggle = document.querySelector('#line-clear-toggle');
-let shouldClearFullLines = lineClearToggle.checked || false;
-let selectedColor = PIECE_COLORS.TEAL;
+let shouldClearFullLines;
+let selectedColor;
 let mouseIsDown = false;
 document.onmousedown = () => { mouseIsDown = true; };
 document.onmouseup = () => { mouseIsDown = false; };
+
+const updateHash = () => {
+    location.hash = encodeURIComponent(
+        JSON.stringify({
+            grid,
+            shouldClearFullLines,
+            selectedColor
+        })
+    );
+};
 
 const onMinoChange = (row, col) => {
     grid[row][col] = selectedColor;
     if (shouldClearFullLines && lineIsFull(row)) {
         clearLine(row);
     }
-    disposeGrid();
-    constructGridView();
+
+    updateHash();
 };
 
 const constructColorSelector = () => {
     const htmlSelect = document.createElement('select');
-    
+
     Object.keys(PIECE_COLORS).forEach((colorKey) => {
         const colorFriendlyName = colorKey.toLocaleLowerCase();
         const htmlOption = document.createElement('option');
@@ -67,9 +87,12 @@ const constructColorSelector = () => {
     htmlSelect.onchange = (ev) => {
         const newlySelectedColor = htmlSelect.value;
         selectedColor = PIECE_COLORS[newlySelectedColor];
+        updateHash();
     };
 
     colorSelectorContainer.appendChild(htmlSelect);
+
+    return htmlSelect;
 };
 
 /**
@@ -80,7 +103,7 @@ const constructGridView = () => {
 
     grid.forEach((row, rowIndex) => {
         const htmlRow = htmlTable.insertRow();
-        
+
         row.forEach((mino, colIndex) => {
             const htmlCell = htmlRow.insertCell();
             htmlCell.className = 'mino'
@@ -130,33 +153,45 @@ const disposeGrid = () => {
     }
 };
 
-// note to self: need to try to solve for ['J', 'S', 'T', 'L', 'Z', 'I', 'O'] and ['O', 'Z', 'S', 'I', 'T', 'J', 'L']
-const generateRandomTetrisPieceBag = () => {
-    const tetrisPieceNames = ['I', 'L', 'O', 'Z', 'T', 'J', 'S'];
-    const randomBag = [];
-    while (tetrisPieceNames.length > 0) {
-        const randomIndex = Math.floor(Math.random() * tetrisPieceNames.length);
-        randomBag.push(tetrisPieceNames.splice(randomIndex, 1));
-    }
-
-    return randomBag.flat();
-};
-
-disposeGrid();
-constructGridView();
-constructColorSelector();
-lineClearToggle.onchange = (ev) => {
-    shouldClearFullLines = ev.target.checked;
+const maybeClearLines = () => {
     if (shouldClearFullLines) {
         const filledLinesIndices = getFilledLinesIndicesSorted();
         if (filledLinesIndices.length > 0) {
             filledLinesIndices.forEach(index => {
                 clearLine(index);
             });
-
-            disposeGrid();
-            constructGridView();
         }
-        
     }
 };
+
+const colorSelector = constructColorSelector();
+lineClearToggle.onchange = (ev) => {
+    shouldClearFullLines = ev.target.checked;
+    maybeClearLines();
+    updateHash();
+};
+
+const appStateSetup = () => {
+    const newValue = decodeHash();
+    if (newValue) {
+        grid = newValue.grid;
+        shouldClearFullLines = newValue.shouldClearFullLines;
+        lineClearToggle.checked = shouldClearFullLines;
+        selectedColor = newValue.selectedColor;
+        colorSelector.value = Object.keys(PIECE_COLORS).find((colorKey) => PIECE_COLORS[colorKey] === selectedColor);
+    } else {
+        grid = getDefaultGrid();
+        shouldClearFullLines = false;
+        lineClearToggle.checked = false;
+        selectedColor = PIECE_COLORS.TEAL;
+        colorSelector.value = 'TEAL';
+    }
+
+    maybeClearLines();
+    disposeGrid();
+    constructGridView();
+}
+
+
+appStateSetup();
+window.addEventListener('hashchange', appStateSetup);
