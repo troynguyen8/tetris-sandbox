@@ -29,6 +29,21 @@ for (let i = 0; i < grid.length; i++) {
     grid[i] = createGridRow();
 }
 
+// tracks the last operation done
+// is there any way to interact with the actual OS/browser history stack?
+// needs to account for line clears as well
+// idea 1: keep track of row, col, prev color, next color
+    // this does not account for line clears
+// idea 2: idea 1 but also keep track if the "operation" triggered a line clear. Keep track of row, col, prev color, next color, entire row
+// idea 3: keep track of literally the entire grid every operation
+    // easiest but jank - every operation adds like 1.5kb
+// idea 4: make remove line an operation in itself
+const historyStack = [];
+
+// push onto stack when cmd+z is pressed
+// when another operation happens, clear the undostack
+const undoStack = [];
+
 const pcoTemplate = JSON.parse('[["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["black","black","black","black","black","black","black","black","black","black"],["red","red","black","black","black","black","orange","orange","orange","cyan"],["purple","red","red","black","black","black","orange","gold","gold","cyan"],["purple","purple","green","green","black","black","blue","gold","gold","cyan"],["purple","green","green","black","black","black","blue","blue","blue","cyan"]]');
 grid = pcoTemplate;
 
@@ -40,13 +55,59 @@ const lineClearToggle = document.querySelector('#line-clear-toggle');
 let shouldClearFullLines = lineClearToggle.checked || false;
 let selectedColor = PIECE_COLORS.TEAL;
 let mouseIsDown = false;
+// variable tracks whether or not a line clear just occurred
+// used to ensure unintentional inputs don't occur after line clears
+let lineclearDebouncer = false;
 document.onmousedown = () => { mouseIsDown = true; };
 document.onmouseup = () => { mouseIsDown = false; };
+document.onkeydown = (ev) => {
+    const isZKey = ev.key === "z" || ev.key === "KeyZ";
+    const isYKey = ev.key === "y" || ev.key === "KeyY";
 
-const onMinoChange = (row, col) => {
-    grid[row][col] = selectedColor;
+    const isUndo = (isZKey && ev.metaKey && !ev.shiftKey) ||
+        (isZKey && ev.ctrlKey && !ev.shiftKey);
+    if (isUndo && historyStack.length > 0) {
+        // pop off history stack, put onto undo stack
+        const operationToUndo = historyStack.pop();
+        if (operationToUndo.type === "mino") {
+            const { row, col, prevColor } = operationToUndo;
+            onMinoChange(row, col, prevColor, true);
+            // push onto redo stack?
+        }
+    }
+
+    const isRedo = (isZKey && ev.metaKey && ev.shiftKey) ||
+        (isZKey && ev.ctrlKey && ev.shiftKey) ||
+        (isYKey && ev.metaKey);
+    if (isRedo) {
+        // pop off undo stack, push onto history stack
+        console.log('redoing');
+    }
+};
+
+const onMinoChange = (row, col, newColor = selectedColor, isFromUndo = false) => {
+    const prevColor = grid[row][col];
+    if (prevColor === newColor) {
+        return;
+    }
+
+    grid[row][col] = newColor;
+    if (!isFromUndo) {
+        historyStack.push({
+            type: "mino",
+            row,
+            col,
+            prevColor,
+            newColor
+        });
+    }
+
     if (shouldClearFullLines && lineIsFull(row)) {
         clearLine(row);
+        lineclearDebouncer = true;
+        setTimeout(() => {
+            lineclearDebouncer = false;
+        }, 250);
     }
     disposeGrid();
     constructGridView();
@@ -93,7 +154,7 @@ const constructGridView = () => {
                 mouseIsDown = false;
             };
             htmlCell.onmouseenter = () => {
-                if (mouseIsDown) {
+                if (mouseIsDown && !lineclearDebouncer) {
                     onMinoChange(rowIndex, colIndex);
                 }
             };
@@ -121,6 +182,10 @@ const lineIsFull = (rowIndex) => {
 const clearLine = (rowIndex) => {
     grid.splice(rowIndex, 1);
     grid.unshift(createGridRow());
+
+    // undoing this would entail...
+    // removing row off the top
+    // adding entire row back at rowIndex
 };
 
 const disposeGrid = () => {
